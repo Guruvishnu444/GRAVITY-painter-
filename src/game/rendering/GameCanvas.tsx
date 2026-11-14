@@ -4,6 +4,8 @@ import { ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { StudioLighting } from './StudioLighting';
 import { LevelStage } from './LevelStage';
+import { DrawingSurface } from '../drawing/DrawingSurface';
+import { StrokesRenderer } from '../drawing/StrokesRenderer';
 import { useGameStore, GravityDirection } from '../../stores/gameStore';
 
 const CameraRig: FC = () => {
@@ -62,6 +64,8 @@ export const GameCanvas: FC = () => {
         <CameraRig />
         <StudioLighting />
         <LevelStage />
+        <StrokesRenderer />
+        <DrawingSurface />
 
         {/* Soft Ground Contact Shadow */}
         <ContactShadows
