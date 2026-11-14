@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useDrawingStore, StrokePoint, StrokeData } from '../../stores/drawingStore';
 import { smoothStrokePoints, calculateStrokeLength } from './spline';
 import { staticStrokeMaterial, dynamicStrokeMaterial } from '../rendering/materials';
+import { sound } from '../../systems/audio/audioManager';
 
 export const DrawingSurface: FC = () => {
   const { currentBrush, addStroke, removeStroke, strokes } = useDrawingStore();
@@ -83,6 +84,7 @@ export const DrawingSurface: FC = () => {
           length,
         };
         addStroke(newStroke);
+        sound.playDrawChime(strokes.length);
       }
     }
 

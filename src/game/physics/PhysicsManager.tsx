@@ -4,11 +4,11 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { useGameStore, GravityDirection } from '../../stores/gameStore';
 import { useDrawingStore } from '../../stores/drawingStore';
+import { useSaveStore } from '../../stores/saveStore';
+import { getLevelById } from '../levels/levelData';
 import { buildStrokeCollider } from './colliderBuilder';
 import { marbleMaterial } from '../rendering/materials';
-
-const SPAWN_POS: [number, number, number] = [-8, 4.0, 0];
-const TARGET_POS: [number, number, number] = [6, -2.5, 0];
+import { sound } from '../../systems/audio/audioManager';
 
 export const PhysicsManager: FC = () => {
   const [initialized, setInitialized] = useState(false);
@@ -16,14 +16,18 @@ export const PhysicsManager: FC = () => {
   const marbleBodyRef = useRef<RAPIER.RigidBody | null>(null);
   const marbleMeshRef = useRef<THREE.Mesh>(null);
   const strokeBodiesRef = useRef<Map<string, RAPIER.RigidBody>>(new Map());
+  const platformCollidersRef = useRef<RAPIER.Collider[]>([]);
 
   const currentGravityRef = useRef<THREE.Vector3>(new THREE.Vector3(0, -9.81, 0));
   const targetGravityRef = useRef<THREE.Vector3>(new THREE.Vector3(0, -9.81, 0));
   const dwellTimerRef = useRef<number>(0);
 
   const status = useGameStore((state) => state.status);
+  const currentLevelId = useGameStore((state) => state.currentLevelId);
   const gravityDirection = useGameStore((state) => state.gravityDirection);
   const strokes = useDrawingStore((state) => state.strokes);
+
+  const level = getLevelById(currentLevelId);
 
   // Initialize Rapier WASM and create the physical world
   useEffect(() => {
@@ -35,40 +39,15 @@ export const PhysicsManager: FC = () => {
       const world = new RAPIER.World(gravity);
       worldRef.current = world;
 
-      // 1. Create Static Environment Colliders (Level 1)
-      // Starting platform: [-7.5, 3.25, 0] size [5, 0.5, 2] -> halfExtents: [2.5, 0.25, 1.0]
-      world.createCollider(
-        RAPIER.ColliderDesc.cuboid(2.5, 0.25, 1.0)
-          .setTranslation(-7.5, 3.25, 0)
-          .setFriction(0.4)
-          .setRestitution(0.2)
-      );
-
-      // Starting bumper: [-10.1, 4.25, 0] size [0.4, 2, 2] -> halfExtents: [0.2, 1.0, 1.0]
-      world.createCollider(
-        RAPIER.ColliderDesc.cuboid(0.2, 1.0, 1.0)
-          .setTranslation(-10.1, 4.25, 0)
-          .setFriction(0.4)
-          .setRestitution(0.2)
-      );
-
-      // Target platform: [6, -3.25, 0] size [6, 0.5, 2] -> halfExtents: [3.0, 0.25, 1.0]
-      world.createCollider(
-        RAPIER.ColliderDesc.cuboid(3.0, 0.25, 1.0)
-          .setTranslation(6, -3.25, 0)
-          .setFriction(0.4)
-          .setRestitution(0.2)
-      );
-
-      // 2. Create Dynamic Marble RigidBody
+      // Create Dynamic Marble RigidBody
       const marbleDesc = RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2])
+        .setTranslation(level.spawnPosition[0], level.spawnPosition[1], level.spawnPosition[2])
         .setLinearDamping(0.1)
         .setAngularDamping(0.2)
         .setCcdEnabled(true);
 
       const marbleBody = world.createRigidBody(marbleDesc);
-      marbleBody.setEnabledTranslations(true, true, false, true); // Z-axis locked
+      marbleBody.setEnabledTranslations(true, true, false, true); // Z locked
       marbleBody.setEnabledRotations(false, false, true, true);   // Only Z rotation free
 
       const marbleColliderDesc = RAPIER.ColliderDesc.ball(0.35)
@@ -91,6 +70,54 @@ export const PhysicsManager: FC = () => {
     };
   }, []);
 
+  // Update static level platforms and obstacles when level changes
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !initialized) return;
+
+    // Remove old platform colliders
+    for (const collider of platformCollidersRef.current) {
+      world.removeCollider(collider, false);
+    }
+    platformCollidersRef.current = [];
+
+    // Create current level platforms
+    for (const p of level.platforms) {
+      const halfExtents = [p.dimensions[0] / 2, p.dimensions[1] / 2, p.dimensions[2] / 2];
+      const collider = world.createCollider(
+        RAPIER.ColliderDesc.cuboid(halfExtents[0], halfExtents[1], halfExtents[2])
+          .setTranslation(p.position[0], p.position[1], p.position[2])
+          .setFriction(0.4)
+          .setRestitution(0.2)
+      );
+      platformCollidersRef.current.push(collider);
+    }
+
+    // Create current level obstacles
+    for (const obs of level.obstacles) {
+      const halfExtents = [obs.dimensions[0] / 2, obs.dimensions[1] / 2, obs.dimensions[2] / 2];
+      const collider = world.createCollider(
+        RAPIER.ColliderDesc.cuboid(halfExtents[0], halfExtents[1], halfExtents[2])
+          .setTranslation(obs.position[0], obs.position[1], obs.position[2])
+          .setFriction(0.4)
+          .setRestitution(0.2)
+      );
+      platformCollidersRef.current.push(collider);
+    }
+
+    // Reset marble to spawn
+    const marbleBody = marbleBodyRef.current;
+    if (marbleBody) {
+      marbleBody.setTranslation({ x: level.spawnPosition[0], y: level.spawnPosition[1], z: level.spawnPosition[2] }, true);
+      marbleBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      marbleBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      marbleBody.sleep();
+    }
+
+    // Reset target ink in drawingStore
+    useDrawingStore.getState().setTargetInk(level.targetInk);
+  }, [currentLevelId, initialized, level]);
+
   // Update target gravity vector when gravityDirection changes
   useEffect(() => {
     const MAGNITUDE = 9.81;
@@ -109,6 +136,7 @@ export const PhysicsManager: FC = () => {
         targetGravityRef.current.set(0, -MAGNITUDE, 0);
         break;
     }
+    sound.playGravityShift();
   }, [gravityDirection]);
 
   // Sync Stroke Colliders when drawingStore strokes change
@@ -142,16 +170,16 @@ export const PhysicsManager: FC = () => {
     if (!marbleBody) return;
 
     if (status === 'READY') {
-      // Hold marble in spawn cradle
-      marbleBody.setTranslation({ x: SPAWN_POS[0], y: SPAWN_POS[1], z: SPAWN_POS[2] }, true);
+      marbleBody.setTranslation({ x: level.spawnPosition[0], y: level.spawnPosition[1], z: level.spawnPosition[2] }, true);
       marbleBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
       marbleBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
       marbleBody.sleep();
       dwellTimerRef.current = 0;
     } else if (status === 'RUNNING') {
       marbleBody.wakeUp();
+      sound.playReleaseSound();
     }
-  }, [status]);
+  }, [status, level]);
 
   // Simulation Step in useFrame
   useFrame((_, delta) => {
@@ -170,21 +198,39 @@ export const PhysicsManager: FC = () => {
 
     // Step physics if simulation is running
     if (status === 'RUNNING') {
-      // Step with fixed delta
       world.step();
 
       // Check win condition (Dwell in target pocket)
       const pos = marbleBody.translation();
       const linvel = marbleBody.linvel();
       const speed = Math.sqrt(linvel.x * linvel.x + linvel.y * linvel.y);
-      const dx = pos.x - TARGET_POS[0];
-      const dy = pos.y - TARGET_POS[1];
+      const dx = pos.x - level.targetPosition[0];
+      const dy = pos.y - level.targetPosition[1];
       const distToTarget = Math.sqrt(dx * dx + dy * dy);
 
       if (distToTarget < 1.0 && speed < 1.2) {
         dwellTimerRef.current += delta;
         if (dwellTimerRef.current >= 0.5) {
+          // Calculate star rating
+          const totalInk = useDrawingStore.getState().totalInkUsed;
+          let stars = 1;
+          if (totalInk <= level.targetInk) {
+            stars = 3;
+          } else if (totalInk <= level.targetInk * 1.6) {
+            stars = 2;
+          }
+          useGameStore.getState().setStarsEarned(stars);
           useGameStore.getState().setStatus('WON');
+          useSaveStore.getState().recordLevelCompletion(level.id, stars, totalInk);
+
+          // Unlock next level
+          const nextIndex = level.number;
+          if (nextIndex < 3) {
+            const nextLevelId = `ch1-0${nextIndex + 1}`;
+            useSaveStore.getState().unlockLevel(nextLevelId);
+          }
+
+          sound.playWinChimes();
         }
       } else {
         dwellTimerRef.current = 0;
@@ -204,7 +250,7 @@ export const PhysicsManager: FC = () => {
   });
 
   return (
-    <mesh ref={marbleMeshRef} position={SPAWN_POS} castShadow material={marbleMaterial}>
+    <mesh ref={marbleMeshRef} position={level.spawnPosition} castShadow material={marbleMaterial}>
       <sphereGeometry args={[0.35, 32, 32]} />
     </mesh>
   );
