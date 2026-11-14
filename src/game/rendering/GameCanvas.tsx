@@ -6,6 +6,7 @@ import { StudioLighting } from './StudioLighting';
 import { LevelStage } from './LevelStage';
 import { DrawingSurface } from '../drawing/DrawingSurface';
 import { StrokesRenderer } from '../drawing/StrokesRenderer';
+import { PhysicsManager } from '../physics/PhysicsManager';
 import { useGameStore, GravityDirection } from '../../stores/gameStore';
 
 const CameraRig: FC = () => {
@@ -65,6 +66,7 @@ export const GameCanvas: FC = () => {
         <StudioLighting />
         <LevelStage />
         <StrokesRenderer />
+        <PhysicsManager />
         <DrawingSurface />
 
         {/* Soft Ground Contact Shadow */}

@@ -2,20 +2,13 @@ import { FC, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
-  marbleMaterial,
   platformMaterial,
   backdropMaterial,
   targetRimMaterial,
   targetGlowMaterial,
 } from './materials';
 
-interface LevelStageProps {
-  marblePosition?: [number, number, number];
-}
-
-export const LevelStage: FC<LevelStageProps> = ({
-  marblePosition = [-8, 4.0, 0],
-}) => {
+export const LevelStage: FC = () => {
   const targetRingRef = useRef<THREE.Mesh>(null);
 
   // Subtle pulsing animation for the target goal aura
@@ -65,11 +58,6 @@ export const LevelStage: FC<LevelStageProps> = ({
           <circleGeometry args={[0.9, 32]} />
         </mesh>
       </group>
-
-      {/* Visual Marble (Placeholder / Initial Spawn) */}
-      <mesh position={marblePosition} castShadow material={marbleMaterial}>
-        <sphereGeometry args={[0.35, 32, 32]} />
-      </mesh>
     </group>
   );
 };
