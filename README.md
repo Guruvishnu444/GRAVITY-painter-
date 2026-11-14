@@ -116,6 +116,6 @@ Ideas and pull requests are welcome. Fork the repo, create a branch, and open a 
 
 📄 License
 
-No license has been added yet. Add a LICENSE file (for example MIT) to tell others how they can use this project.
+This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">Made with ❤️ by <a href="https://github.com/Guruvishnu444">Guruvishnu444</a></div>
